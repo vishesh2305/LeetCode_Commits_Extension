@@ -1,0 +1,220 @@
+/* LeetHub Sync — in-page card. Mirrors LeetCode's own surface tokens so it
+   reads as part of the site in both themes. */
+
+.lgs-card {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483000;
+  width: 356px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--lgs-border);
+  background: var(--lgs-bg);
+  color: var(--lgs-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: var(--lgs-shadow);
+  animation: lgs-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lgs-card * { box-sizing: border-box; }
+
+.lgs-light {
+  --lgs-bg: #ffffff;
+  --lgs-fg: #262626;
+  --lgs-muted: #5f5f5f;
+  --lgs-border: rgba(0, 0, 0, 0.09);
+  --lgs-fill: #f7f8fa;
+  --lgs-fill-strong: #eff1f3;
+  --lgs-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.lgs-dark {
+  --lgs-bg: #282828;
+  --lgs-fg: #eff1f6;
+  --lgs-muted: #b3b3b3;
+  --lgs-border: rgba(255, 255, 255, 0.1);
+  --lgs-fill: #333333;
+  --lgs-fill-strong: #3d3d3d;
+  --lgs-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes lgs-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.lgs-card.lgs-out {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+/* ------------------------------- header ------------------------------- */
+
+.lgs-head { display: flex; align-items: flex-start; gap: 10px; }
+
+.lgs-badge {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+}
+.lgs-ok   { background: rgba(44, 187, 93, 0.14);  color: #2cbb5d; }
+.lgs-warn { background: rgba(255, 161, 22, 0.16); color: #ffa116; }
+.lgs-err  { background: rgba(239, 71, 67, 0.14);  color: #ef4743; }
+.lgs-busy { background: rgba(255, 161, 22, 0.16); color: #ffa116; }
+
+.lgs-headtext { flex: 1 1 auto; min-width: 0; }
+.lgs-title { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.lgs-sub {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--lgs-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.lgs-close {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  margin: -2px -2px 0 0;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--lgs-muted);
+  font-size: 17px; line-height: 1;
+  cursor: pointer;
+}
+.lgs-close:hover { background: var(--lgs-fill); color: var(--lgs-fg); }
+
+/* -------------------------------- meta -------------------------------- */
+
+.lgs-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 11px 0 0; }
+
+.lgs-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--lgs-fill);
+  color: var(--lgs-muted);
+  font-size: 11.5px; font-weight: 500;
+}
+.lgs-diff-easy   { background: rgba(0, 175, 155, 0.15);  color: #00af9b; }
+.lgs-diff-medium { background: rgba(255, 161, 22, 0.16); color: #ffa116; }
+.lgs-diff-hard   { background: rgba(239, 71, 67, 0.15);  color: #ef4743; }
+
+/* ------------------------------- target ------------------------------- */
+
+.lgs-path {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--lgs-fill);
+}
+.lgs-path-repo {
+  font-size: 11.5px; font-weight: 600;
+  color: var(--lgs-muted);
+  margin-bottom: 3px;
+}
+.lgs-path-file {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--lgs-fg);
+  word-break: break-all;
+}
+
+.lgs-note {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border-left: 2px solid #ffa116;
+  background: rgba(255, 161, 22, 0.1);
+  color: var(--lgs-fg);
+  font-size: 11.5px;
+}
+
+.lgs-error {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(239, 71, 67, 0.1);
+  color: var(--lgs-fg);
+  font-size: 12px;
+  max-height: 120px; overflow: auto;
+}
+
+/* ------------------------------- actions ------------------------------- */
+
+.lgs-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.lgs-btn {
+  flex: 1 1 auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 12px;
+  border: 0; border-radius: 8px;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+.lgs-primary { background: #2cbb5d; color: #fff; }
+.lgs-primary:hover { background: #26a552; }
+.lgs-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.lgs-ghost {
+  flex: 0 0 auto;
+  background: var(--lgs-fill);
+  color: var(--lgs-fg);
+}
+.lgs-ghost:hover { background: var(--lgs-fill-strong); }
+
+.lgs-always {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--lgs-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.lgs-always input { accent-color: #2cbb5d; margin: 0; }
+
+/* -------------------------------- states -------------------------------- */
+
+.lgs-bar {
+  margin-top: 13px;
+  height: 3px; border-radius: 3px;
+  background: var(--lgs-fill);
+  overflow: hidden;
+}
+.lgs-bar-fill {
+  width: 38%; height: 100%; border-radius: 3px;
+  background: #2cbb5d;
+  animation: lgs-slide 1.05s ease-in-out infinite;
+}
+@keyframes lgs-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+.lgs-spin { animation: lgs-rotate 0.8s linear infinite; transform-origin: 50% 50%; }
+@keyframes lgs-rotate { to { transform: rotate(360deg); } }
+
+.lgs-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 11px;
+}
+.lgs-stat {
+  padding: 8px 6px;
+  border-radius: 8px;
+  background: var(--lgs-fill);
+  text-align: center;
+}
+.lgs-stat-num { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.lgs-stat-label { margin-top: 1px; font-size: 10.5px; color: var(--lgs-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lgs-card, .lgs-bar-fill, .lgs-spin { animation: none !important; }
+}

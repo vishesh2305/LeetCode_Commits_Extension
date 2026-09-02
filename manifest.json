@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "LeetHub Sync — LeetCode → GitHub",
+  "version": "1.0.0",
+  "description": "Tracks your LeetCode progress and pushes every accepted submission to a public or private GitHub repo, with a prompt on each submit.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "notifications"],
+  "host_permissions": [
+    "https://leetcode.com/*",
+    "https://leetcode.cn/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+      "js": ["src/interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://leetcode.com/*", "https://leetcode.cn/*"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "LeetHub Sync",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

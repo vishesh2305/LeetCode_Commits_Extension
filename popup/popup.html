@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LeetHub Sync</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark"></span>
+      <div>
+        <div class="brand-name">LeetHub Sync</div>
+        <div class="brand-sub" id="repoPill">Not connected</div>
+      </div>
+    </div>
+    <div class="mode-pill" id="modePill" title="Push behaviour">Prompt</div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" data-tab="dash" role="tab">Progress</button>
+    <button class="tab" data-tab="repo" role="tab">Repository</button>
+    <button class="tab" data-tab="opts" role="tab">Options</button>
+  </nav>
+
+  <main>
+    <!-- ------------------------------ Progress ------------------------------ -->
+    <section class="panel is-active" data-panel="dash">
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-num" id="sTotal">0</div><div class="stat-lbl">Solved</div></div>
+        <div class="stat"><div class="stat-num" id="sStreak">0</div><div class="stat-lbl">Day streak</div></div>
+        <div class="stat"><div class="stat-num" id="sWeek">0</div><div class="stat-lbl">This week</div></div>
+        <div class="stat"><div class="stat-num" id="sPush">0</div><div class="stat-lbl">Pushes</div></div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span>By difficulty</span></div>
+        <div class="diffs">
+          <div class="diff" data-d="Easy"><span class="d-name">Easy</span><div class="d-track"><i></i></div><span class="d-num">0</span></div>
+          <div class="diff" data-d="Medium"><span class="d-name">Medium</span><div class="d-track"><i></i></div><span class="d-num">0</span></div>
+          <div class="diff" data-d="Hard"><span class="d-name">Hard</span><div class="d-track"><i></i></div><span class="d-num">0</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span>This tab</span></div>
+        <div class="diag" id="diag">Checking…</div>
+        <button class="btn ghost full" id="pushLast" type="button" disabled>Push last submission</button>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span>Recent pushes</span><a id="openRepo" href="#" target="_blank" rel="noopener" hidden>Open repo →</a></div>
+        <ul class="activity" id="activity"><li class="empty">Nothing pushed yet. Solve a problem on LeetCode to get started.</li></ul>
+      </div>
+    </section>
+
+    <!-- ----------------------------- Repository ----------------------------- -->
+    <section class="panel" data-panel="repo">
+      <label class="field">
+        <span class="lbl">GitHub personal access token</span>
+        <span class="input-wrap">
+          <input id="token" type="password" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" />
+          <button class="reveal" id="reveal" type="button" title="Show / hide">👁</button>
+        </span>
+        <span class="hint">
+          Fine-grained token with <b>Contents: Read and write</b> on the target repo, or a classic token
+          with the <b>repo</b> scope (that scope covers private repositories).
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create one →</a>
+          Stored only in this browser's local extension storage.
+        </span>
+      </label>
+
+      <div class="row">
+        <button class="btn ghost" id="loadRepos" type="button">Load my repos</button>
+        <button class="btn ghost" id="newRepoToggle" type="button">New repo</button>
+      </div>
+
+      <label class="field" id="repoSelectField" hidden>
+        <span class="lbl">Pick a repository</span>
+        <select id="repoSelect"></select>
+      </label>
+
+      <div class="new-repo" id="newRepoBox" hidden>
+        <div class="row tight">
+          <input id="newRepoName" placeholder="leetcode-solutions" spellcheck="false" />
+          <label class="check inline"><input type="checkbox" id="newRepoPrivate" checked /><span>Private</span></label>
+        </div>
+        <button class="btn ghost full" id="createRepo" type="button">Create repository</button>
+      </div>
+
+      <div class="row">
+        <label class="field grow">
+          <span class="lbl">Owner</span>
+          <input id="owner" placeholder="your-username" spellcheck="false" />
+        </label>
+        <label class="field grow">
+          <span class="lbl">Repository</span>
+          <input id="repo" placeholder="leetcode-solutions" spellcheck="false" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="lbl">Branch <em>(blank = default branch)</em></span>
+        <input id="branch" placeholder="main" spellcheck="false" />
+      </label>
+
+      <button class="btn primary full" id="test" type="button">Test connection</button>
+      <div class="banner" id="banner" hidden></div>
+    </section>
+
+    <!-- ------------------------------ Options ------------------------------ -->
+    <section class="panel" data-panel="opts">
+      <div class="field">
+        <span class="lbl">When a submission is accepted</span>
+        <div class="segmented" id="mode">
+          <button data-mode="prompt" type="button">Ask me</button>
+          <button data-mode="auto" type="button">Push automatically</button>
+          <button data-mode="off" type="button">Off</button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="lbl">Folder inside the repo <em>(optional)</em></span>
+        <input id="rootPath" placeholder="e.g. leetcode" spellcheck="false" />
+      </label>
+
+      <div class="row">
+        <label class="field grow">
+          <span class="lbl">Number padding</span>
+          <select id="padWidth">
+            <option value="0">1-two-sum</option>
+            <option value="3">001-two-sum</option>
+            <option value="4" selected>0001-two-sum</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="lbl">Commit message</span>
+        <input id="commitTemplate" spellcheck="false" />
+        <span class="hint">Placeholders: {id} {title} {slug} {difficulty} {lang} {runtime} {memory} {date}</span>
+      </label>
+
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="groupByDifficulty" /><span>Group folders by difficulty</span></label>
+        <label class="check"><input type="checkbox" id="includeHeader" /><span>Add a header comment to each solution</span></label>
+        <label class="check"><input type="checkbox" id="writeProblemReadme" /><span>Write README.md in each problem folder</span></label>
+        <label class="check"><input type="checkbox" id="writeIndexReadme" /><span>Keep a progress table in the repo README</span></label>
+        <label class="check"><input type="checkbox" id="keepLatestSolution" /><span>Also keep solution.&lt;ext&gt; as the newest accepted</span></label>
+        <label class="check"><input type="checkbox" id="onlyAccepted" /><span>Only offer to push Accepted submissions</span></label>
+        <label class="check"><input type="checkbox" id="notify" /><span>Desktop notification after a push</span></label>
+        <label class="check"><input type="checkbox" id="debug" /><span>Verbose logging in the page console</span></label>
+      </div>
+
+      <button class="btn danger full" id="reset" type="button">Reset local progress</button>
+      <p class="fineprint">Resetting clears the counters in this popup only. Nothing is deleted from GitHub.</p>
+    </section>
+  </main>
+
+  <footer class="foot"><span id="saveState">Changes save automatically</span></footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
