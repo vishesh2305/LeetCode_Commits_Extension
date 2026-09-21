@@ -13,6 +13,15 @@
   if (window.__LGS_CONTENT__) return;
   window.__LGS_CONTENT__ = true;
 
+  /**
+   * Bumped whenever the background starts relying on a new message type here.
+   * A tab loaded before an extension reload keeps running the OLD script, which
+   * answers LGS_PING but silently ignores anything it doesn't know — the port
+   * then closes with "The message port closed before a response was received".
+   * The background checks this number so it never asks a stale tab to do work.
+   */
+  const CS_VERSION = 2;
+
   const ORIGIN = location.origin;
   const GRAPHQL = `${ORIGIN}/graphql/`;
   const PENDING_STATUSES = new Set(['Pending', 'Judging', 'Started', 'Running', '']);
@@ -56,9 +65,25 @@
       return true;
     }
     if (msg?.type === 'LGS_PING') {
-      sendResponse({ ok: true, data: { url: location.href, slug: slugFromLocation() } });
+      sendResponse({
+        ok: true,
+        data: { url: location.href, slug: slugFromLocation(), version: CS_VERSION }
+      });
       return false;
     }
+    if (msg?.type === 'LGS_LIST_SOLVED') {
+      listSolvedProblems()
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
+    if (msg?.type === 'LGS_PREPARE') {
+      prepareForSlug(msg.payload?.slug)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
+    sendResponse({ ok: false, error: `Unknown message type: ${msg?.type}` });
     return false;
   });
 
@@ -225,6 +250,121 @@
     await onResult(detail, 'manual');
     return { submissionId: wanted.id, status: wanted.statusDisplay };
   }
+
+  /* --------------------------- bulk backfill --------------------------- */
+
+  /**
+   * Every problem this account has ever solved, oldest id first.
+   *
+   * LeetCode has renamed this query more than once, so we try the current
+   * `problemsetQuestionList` first and fall back to the newer V2 shape.
+   */
+  async function listSolvedProblems() {
+    const PAGE = 100;
+    const items = [];
+    const seen = new Set();
+    let total = null;
+
+    for (let skip = 0; skip < 6000; skip += PAGE) {
+      const page = await solvedPage(skip, PAGE);
+      if (total == null) total = page.total;
+      for (const q of page.questions) {
+        if (seen.has(q.slug)) continue;
+        seen.add(q.slug);
+        items.push(q);
+      }
+      if (page.questions.length < PAGE) break;          // last page
+      if (total != null && items.length >= total) break;
+      await sleep(250);                       // stay well clear of LeetCode throttling
+    }
+
+    items.sort((a, b) => numericId(a.frontendId) - numericId(b.frontendId));
+    log('solved library:', items.length, 'problems');
+    return { items, total: total ?? items.length };
+  }
+
+  const SOLVED_QUERY = `
+    query lgsSolved($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
+      problemsetQuestionList: questionList(
+        categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters
+      ) {
+        total: totalNum
+        questions: data {
+          questionFrontendId
+          title
+          titleSlug
+          difficulty
+          acRate
+          isPaidOnly
+          topicTags { name }
+        }
+      }
+    }`;
+
+  const SOLVED_QUERY_V2 = `
+    query lgsSolvedV2($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionFilterInput) {
+      problemsetQuestionListV2(
+        categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters
+      ) {
+        totalLength
+        questions {
+          questionFrontendId
+          title
+          titleSlug
+          difficulty
+          acRate
+          paidOnly
+          topicTags { name }
+        }
+      }
+    }`;
+
+  async function solvedPage(skip, limit) {
+    try {
+      const d = await graphql(SOLVED_QUERY, {
+        categorySlug: '', skip, limit, filters: { status: 'AC' }
+      });
+      const list = d?.problemsetQuestionList;
+      if (list) return { total: list.total ?? null, questions: (list.questions || []).map(normalizeQuestion) };
+    } catch (err) {
+      log('solved page (v1) failed:', err.message);
+    }
+
+    const d = await graphql(SOLVED_QUERY_V2, {
+      categorySlug: '', skip, limit, filters: { statusFilter: 'SOLVED' }
+    });
+    const list = d?.problemsetQuestionListV2;
+    if (!list) throw new Error('LeetCode did not return a solved-problem list. Are you signed in?');
+    return { total: list.totalLength ?? null, questions: (list.questions || []).map(normalizeQuestion) };
+  }
+
+  function normalizeQuestion(q) {
+    return {
+      frontendId: q.questionFrontendId,
+      title: q.title,
+      slug: q.titleSlug,
+      difficulty: q.difficulty || 'Unknown',
+      acRate: typeof q.acRate === 'number' ? Math.round(q.acRate * 100) / 100 : null,
+      paidOnly: !!(q.isPaidOnly ?? q.paidOnly),
+      tags: (q.topicTags || []).map((t) => t.name)
+    };
+  }
+
+  /** Newest accepted submission for one problem, shaped exactly like a live push. */
+  async function prepareForSlug(slug) {
+    if (!slug) throw new Error('No problem slug given.');
+    const list = await listSubmissions(slug, 20);
+    const accepted = list.find((s) => s.statusDisplay === 'Accepted');
+    if (!accepted) throw new Error('No accepted submission found on LeetCode for this problem.');
+
+    const submission = await buildFromSubmission(accepted, slug);
+    if (!submission.code) throw new Error('LeetCode returned no source code for this submission.');
+    const problem = await fetchProblem(slug, submission.questionId);
+    return { problem, submission };
+  }
+
+  const numericId = (id) => (/^\d+$/.test(String(id)) ? Number(id) : Number.MAX_SAFE_INTEGER);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /* ------------------------------- graphql ------------------------------- */
 

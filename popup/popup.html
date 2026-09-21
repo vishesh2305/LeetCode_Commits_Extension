@@ -19,6 +19,7 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab is-active" data-tab="dash" role="tab">Progress</button>
+    <button class="tab" data-tab="lib" role="tab">Library</button>
     <button class="tab" data-tab="repo" role="tab">Repository</button>
     <button class="tab" data-tab="opts" role="tab">Options</button>
   </nav>
@@ -52,6 +53,84 @@
         <div class="block-head"><span>Recent pushes</span><a id="openRepo" href="#" target="_blank" rel="noopener" hidden>Open repo →</a></div>
         <ul class="activity" id="activity"><li class="empty">Nothing pushed yet. Solve a problem on LeetCode to get started.</li></ul>
       </div>
+    </section>
+
+
+    <!-- ------------------------------ Library ------------------------------ -->
+    <section class="panel" data-panel="lib">
+      <div class="job" id="jobBox" hidden>
+        <div class="job-head">
+          <span id="jobTitle">Pushing…</span>
+          <span id="jobCount" class="tabnum">0 / 0</span>
+        </div>
+        <div class="jbar"><i id="jobBar"></i></div>
+        <div class="job-sub" id="jobSub"></div>
+        <div class="row tight" id="jobActions">
+          <button class="btn ghost grow" id="jobPause" type="button">Pause</button>
+          <button class="btn ghost grow" id="jobCancel" type="button">Cancel</button>
+        </div>
+        <details class="errbox" id="errBox" hidden>
+          <summary>Problems that failed (<span id="errCount">0</span>)</summary>
+          <ul class="errlist" id="errList"></ul>
+        </details>
+      </div>
+
+      <div class="row tight">
+        <button class="btn ghost grow" id="loadSolved" type="button">Load solved problems</button>
+      </div>
+      <p class="fineprint" id="libMeta">
+        Pulls every problem your LeetCode account has ever solved. Needs a signed-in
+        LeetCode tab — one is opened in the background if you have none.
+      </p>
+
+      <div class="row tight">
+        <input id="libSearch" placeholder="Search title or number" spellcheck="false" />
+      </div>
+
+      <div class="segmented" id="libDiff">
+        <button data-d="all" class="is-on" type="button">All</button>
+        <button data-d="Easy" type="button">Easy</button>
+        <button data-d="Medium" type="button">Medium</button>
+        <button data-d="Hard" type="button">Hard</button>
+      </div>
+
+      <div class="segmented" id="libState">
+        <button data-s="all" class="is-on" type="button">Every problem</button>
+        <button data-s="new" type="button">Not pushed</button>
+        <button data-s="done" type="button">Pushed</button>
+      </div>
+
+      <div class="lib-bar">
+        <label class="check"><input type="checkbox" id="libAll" /><span>Select all shown</span></label>
+        <span class="tabnum" id="libCount">0 selected</span>
+      </div>
+
+      <ul class="lib" id="libList">
+        <li class="empty">Nothing loaded yet — hit “Load solved problems”.</li>
+      </ul>
+      <p class="fineprint" id="libTrunc" hidden></p>
+
+      <div class="row tight">
+        <button class="btn primary grow" id="pushSelected" type="button" disabled>Push selected</button>
+        <button class="btn ghost grow" id="pushAll" type="button" disabled>Push all</button>
+      </div>
+
+      <label class="check"><input type="checkbox" id="bulkSkipPushed" /><span>Skip problems already pushed</span></label>
+
+      <label class="field" style="margin-top:11px">
+        <span class="lbl">Pace <em>(slower is gentler on rate limits)</em></span>
+        <select id="bulkDelayMs">
+          <option value="400">Fast — 0.4s between problems</option>
+          <option value="1000">Balanced — 1s between problems</option>
+          <option value="2500">Safe — 2.5s between problems</option>
+        </select>
+      </label>
+
+      <div class="banner" id="libBanner" hidden></div>
+      <p class="fineprint">
+        Each problem is pushed with its newest accepted submission. The run keeps going
+        in the background after you close this popup.
+      </p>
     </section>
 
     <!-- ----------------------------- Repository ----------------------------- -->

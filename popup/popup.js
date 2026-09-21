@@ -5,7 +5,8 @@ const $ = (id) => document.getElementById(id);
 const TEXT_FIELDS = ['token', 'owner', 'repo', 'branch', 'rootPath', 'commitTemplate'];
 const CHECK_FIELDS = [
   'groupByDifficulty', 'includeHeader', 'writeProblemReadme',
-  'writeIndexReadme', 'keepLatestSolution', 'onlyAccepted', 'notify', 'debug'
+  'writeIndexReadme', 'keepLatestSolution', 'onlyAccepted', 'notify', 'debug',
+  'bulkSkipPushed'
 ];
 
 let settings = {};
@@ -90,6 +91,7 @@ function paintForm() {
   TEXT_FIELDS.forEach((k) => { if ($(k)) $(k).value = settings[k] ?? ''; });
   CHECK_FIELDS.forEach((k) => { if ($(k)) $(k).checked = !!settings[k]; });
   $('padWidth').value = String(settings.padWidth ?? 4);
+  $('bulkDelayMs').value = String(settings.bulkDelayMs ?? 1000);
   document.querySelectorAll('#mode button').forEach((b) =>
     b.classList.toggle('is-on', b.dataset.mode === (settings.mode || 'prompt')));
 }
@@ -175,6 +177,7 @@ $('debug').addEventListener('change', async () => {
 });
 
 $('padWidth').addEventListener('change', (e) => save({ padWidth: Number(e.target.value) }, true));
+$('bulkDelayMs').addEventListener('change', (e) => save({ bulkDelayMs: Number(e.target.value) }, true));
 
 document.querySelectorAll('#mode button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -334,6 +337,17 @@ async function checkTab() {
     return;
   }
 
+  // A tab opened before the last extension reload runs the old content script.
+  // It answers a ping but cannot do anything new, so say so rather than look fine.
+  if ((Number(res.data?.version) || 1) < REQUIRED_CS_VERSION) {
+    diag.className = 'diag bad';
+    diag.innerHTML =
+      'This tab is running an <b>older version</b> of the extension — ' +
+      '<b>reload the LeetCode tab</b> to pick up the current one.';
+    btn.disabled = true;
+    return;
+  }
+
   const slug = res.data?.slug;
   diag.className = 'diag good';
   diag.innerHTML = slug
@@ -361,6 +375,353 @@ $('pushLast').addEventListener('click', async (e) => {
   }
 });
 
+
+/* -------------------------------- library -------------------------------- */
+
+/**
+ * The Library tab lists every problem the LeetCode account has ever solved and
+ * lets you push any subset of them. The list is cached in extension storage, so
+ * reopening the popup is instant; the bulk run itself lives in the background
+ * worker and keeps going once this popup closes.
+ */
+
+const MAX_ROWS = 300;             // the popup stays responsive; filters reach the rest
+
+// Keep in step with CS_VERSION in src/content.js.
+const REQUIRED_CS_VERSION = 2;
+
+let library = { items: [], fetchedAt: null };
+let pushed = new Set();           // slugs already synced to GitHub
+let selection = new Set();
+let filters = { text: '', difficulty: 'all', state: 'all' };
+let jobTimer = null;
+
+function libBanner(kind, text) {
+  const b = $('libBanner');
+  if (!text) { b.hidden = true; return; }
+  b.className = `banner ${kind}`;
+  b.textContent = text;
+  b.hidden = false;
+}
+
+async function loadLibrary() {
+  const data = await send('GET_LIBRARY');
+  library = data.library;
+  pushed = new Set(data.pushed.map(String));
+  selection = new Set((data.library.selection || []).filter((s) => !!s));
+  paintLibrary();
+  paintJob(data.job);
+}
+
+/** progress.solved is keyed by frontend id, the library by slug — match on both. */
+const isPushed = (item) => pushed.has(String(item.frontendId)) || pushed.has(item.slug);
+
+function visibleItems() {
+  const q = filters.text.trim().toLowerCase();
+  return library.items.filter((it) => {
+    if (filters.difficulty !== 'all' && it.difficulty !== filters.difficulty) return false;
+    if (filters.state === 'new' && isPushed(it)) return false;
+    if (filters.state === 'done' && !isPushed(it)) return false;
+    if (!q) return true;
+    return it.title.toLowerCase().includes(q) || String(it.frontendId).startsWith(q);
+  });
+}
+
+function paintLibrary() {
+  const list = $('libList');
+  const shown = visibleItems();
+  list.innerHTML = '';
+
+  if (!library.items.length) {
+    list.appendChild(emptyRow('Nothing loaded yet — hit “Load solved problems”.'));
+  } else if (!shown.length) {
+    list.appendChild(emptyRow('No problem matches these filters.'));
+  } else {
+    const frag = document.createDocumentFragment();
+    shown.slice(0, MAX_ROWS).forEach((it) => frag.appendChild(libraryRow(it)));
+    list.appendChild(frag);
+  }
+
+  const trunc = $('libTrunc');
+  if (shown.length > MAX_ROWS) {
+    trunc.hidden = false;
+    trunc.textContent =
+      `Showing the first ${MAX_ROWS} of ${shown.length} — narrow the filters to see the rest. ` +
+      `“Select all shown” still covers all ${shown.length}.`;
+  } else {
+    trunc.hidden = true;
+  }
+
+  const notPushed = library.items.filter((it) => !isPushed(it)).length;
+  $('libMeta').textContent = library.fetchedAt
+    ? `${library.items.length} solved on LeetCode · ${notPushed} not yet on GitHub · loaded ${ago(library.fetchedAt)} ago`
+    : 'Pulls every problem your LeetCode account has ever solved. Needs a signed-in LeetCode tab — one is opened in the background if you have none.';
+
+  const allShownSelected = shown.length > 0 && shown.every((it) => selection.has(it.slug));
+  $('libAll').checked = allShownSelected;
+  $('libAll').indeterminate = !allShownSelected && shown.some((it) => selection.has(it.slug));
+
+  $('libCount').textContent = `${selection.size} selected`;
+  $('pushSelected').disabled = selection.size === 0;
+  $('pushSelected').textContent = selection.size
+    ? `Push selected (${selection.size})`
+    : 'Push selected';
+  $('pushAll').disabled = library.items.length === 0;
+  $('pushAll').textContent = settings.bulkSkipPushed && notPushed !== library.items.length
+    ? `Push all (${notPushed})`
+    : `Push all (${library.items.length})`;
+}
+
+function emptyRow(text) {
+  const li = document.createElement('li');
+  li.className = 'empty';
+  li.textContent = text;
+  return li;
+}
+
+function libraryRow(item) {
+  const li = document.createElement('li');
+  li.className = 'row-item' + (isPushed(item) ? ' is-pushed' : '');
+
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = selection.has(item.slug);
+
+  const id = document.createElement('span');
+  id.className = 'l-id';
+  id.textContent = item.frontendId;
+
+  const title = document.createElement('span');
+  title.className = 'l-title';
+  title.textContent = item.title;
+  title.title = item.title;
+
+  const tag = document.createElement('span');
+  tag.className = 'l-tag';
+  tag.dataset.d = item.difficulty;
+  tag.textContent = (item.difficulty || '?').slice(0, 1).toUpperCase();
+  tag.title = item.difficulty || 'Unknown';
+
+  li.append(box, id, title, tag);
+
+  if (isPushed(item)) {
+    const done = document.createElement('span');
+    done.className = 'l-done';
+    done.textContent = '✓';
+    done.title = 'Already pushed to GitHub';
+    li.appendChild(done);
+  }
+  if (item.paidOnly) {
+    const lock = document.createElement('span');
+    lock.className = 'l-lock';
+    lock.textContent = '🔒';
+    lock.title = 'Premium problem — the statement may not be fetchable';
+    li.appendChild(lock);
+  }
+
+  li.addEventListener('click', (e) => {
+    const on = e.target === box ? box.checked : !selection.has(item.slug);
+    if (e.target !== box) box.checked = on;
+    toggle(item.slug, on);
+  });
+  return li;
+}
+
+function toggle(slug, on) {
+  if (on) selection.add(slug);
+  else selection.delete(slug);
+  persistSelection();
+  paintLibrary();
+}
+
+let selectionTimer = null;
+function persistSelection() {
+  clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(
+    () => send('SAVE_SELECTION', { selection: [...selection] }).catch(() => {}),
+    250
+  );
+}
+
+/* ------------------------------ library wiring ------------------------------ */
+
+$('loadSolved').addEventListener('click', async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = 'Asking LeetCode…';
+  libBanner(null, '');
+  try {
+    const data = await send('REFRESH_LIBRARY');
+    library = data.library;
+    pushed = new Set(data.pushed.map(String));
+    paintLibrary();
+    libBanner('ok', `Found ${data.library.items.length} solved problems on LeetCode.`);
+  } catch (err) {
+    libBanner('err', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Reload solved problems';
+  }
+});
+
+$('libSearch').addEventListener('input', (e) => {
+  filters.text = e.target.value;
+  paintLibrary();
+});
+
+document.querySelectorAll('#libDiff button').forEach((b) => {
+  b.addEventListener('click', () => {
+    filters.difficulty = b.dataset.d;
+    document.querySelectorAll('#libDiff button').forEach((x) => x.classList.toggle('is-on', x === b));
+    paintLibrary();
+  });
+});
+
+document.querySelectorAll('#libState button').forEach((b) => {
+  b.addEventListener('click', () => {
+    filters.state = b.dataset.s;
+    document.querySelectorAll('#libState button').forEach((x) => x.classList.toggle('is-on', x === b));
+    paintLibrary();
+  });
+});
+
+$('libAll').addEventListener('change', (e) => {
+  const shown = visibleItems();
+  shown.forEach((it) => (e.target.checked ? selection.add(it.slug) : selection.delete(it.slug)));
+  persistSelection();
+  paintLibrary();
+});
+
+$('bulkSkipPushed').addEventListener('change', () => paintLibrary());
+
+$('pushSelected').addEventListener('click', () =>
+  startBulk(library.items.filter((it) => selection.has(it.slug))));
+
+$('pushAll').addEventListener('click', () => startBulk(library.items));
+
+async function startBulk(items) {
+  if (!settings.token || !settings.owner || !settings.repo) {
+    return libBanner('err', 'Finish the Repository tab first — a token and a target repo are required.');
+  }
+
+  let queue = items;
+  if (settings.bulkSkipPushed) queue = queue.filter((it) => !isPushed(it));
+  if (!queue.length) {
+    return libBanner('ok', 'Everything selected is already on GitHub. Untick “Skip problems already pushed” to push them again.');
+  }
+  const minutes = Math.ceil((queue.length * ((settings.bulkDelayMs || 1000) + 1800)) / 60000);
+  if (!confirm(
+    `Push ${queue.length} problem${queue.length === 1 ? '' : 's'} to ` +
+    `${settings.owner}/${settings.repo}?\n\n` +
+    `This takes roughly ${minutes} minute${minutes === 1 ? '' : 's'} and keeps running in the ` +
+    `background after you close this popup.`
+  )) return;
+
+  libBanner(null, '');
+  try {
+    const job = await send('START_BULK', { slugs: queue.map((it) => it.slug) });
+    selection.clear();                 // the run owns these now; start the list clean
+    persistSelection();
+    paintLibrary();
+    paintJob(job);
+  } catch (err) {
+    libBanner('err', err.message);
+  }
+}
+
+$('jobPause').addEventListener('click', async () => {
+  const job = $('jobPause').dataset.action === 'resume'
+    ? await send('RESUME_BULK')
+    : await send('PAUSE_BULK');
+  paintJob(job);
+});
+
+$('jobCancel').addEventListener('click', async () => {
+  const done = ['done', 'cancelled'].includes($('jobBox').dataset.status);
+  if (!done && !confirm('Stop the bulk push? Problems already pushed stay on GitHub.')) return;
+  paintJob(await send(done ? 'CLEAR_JOB' : 'CANCEL_BULK'));
+  await loadLibrary();
+});
+
+/* -------------------------------- job view -------------------------------- */
+
+function paintJob(job) {
+  const box = $('jobBox');
+  if (!job || job.status === 'idle') {
+    box.hidden = true;
+    stopJobPolling();
+    return;
+  }
+
+  box.hidden = false;
+  box.dataset.status = job.status;
+  box.classList.toggle('is-done', job.status === 'done');
+  box.classList.toggle('is-bad', ['cancelled', 'interrupted'].includes(job.status));
+
+  const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
+  $('jobBar').style.width = `${pct}%`;
+  $('jobCount').textContent = `${job.done} / ${job.total}`;
+
+  $('jobTitle').textContent = {
+    running: 'Pushing your solved problems…',
+    paused: 'Paused',
+    done: 'Bulk push finished',
+    cancelled: 'Bulk push cancelled',
+    interrupted: 'Bulk push was interrupted'
+  }[job.status] || 'Bulk push';
+
+  const parts = [];
+  if (job.pushed) parts.push(`${job.pushed} pushed`);
+  if (job.failed) parts.push(`${job.failed} failed`);
+  if (job.status === 'running' && job.current?.slug) parts.push(job.current.slug);
+  if (job.status === 'interrupted') parts.push('Chrome suspended the extension — resume to finish');
+  if (job.message) parts.push(job.message);
+  $('jobSub').textContent = parts.join(' · ') || 'Starting…';
+
+  const finished = ['done', 'cancelled'].includes(job.status);
+  const pause = $('jobPause');
+  pause.hidden = finished;
+  pause.dataset.action = job.status === 'running' ? 'pause' : 'resume';
+  pause.textContent = job.status === 'running' ? 'Pause' : 'Resume';
+  pause.disabled = job.status !== 'running' && job.remaining === 0;
+  $('jobCancel').textContent = finished ? 'Dismiss' : 'Cancel';
+
+  const errs = job.errors || [];
+  $('errBox').hidden = errs.length === 0;
+  $('errCount').textContent = String(errs.length);
+  const list = $('errList');
+  list.innerHTML = '';
+  errs.slice(-25).reverse().forEach((e) => {
+    const li = document.createElement('li');
+    const name = document.createElement('b');
+    name.textContent = `${e.slug}: `;
+    li.append(name, document.createTextNode(e.error));
+    list.appendChild(li);
+  });
+
+  if (job.status === 'running') startJobPolling();
+  else stopJobPolling();
+
+  // A finished run changes the pushed set and the Progress tab numbers.
+  if (finished && !paintJob.settled) {
+    paintJob.settled = true;
+    refresh().catch(() => {});
+  }
+  if (job.status === 'running') paintJob.settled = false;
+}
+
+function startJobPolling() {
+  if (jobTimer) return;
+  jobTimer = setInterval(async () => {
+    try { paintJob(await send('GET_JOB')); } catch (_) { stopJobPolling(); }
+  }, 1200);
+}
+
+function stopJobPolling() {
+  clearInterval(jobTimer);
+  jobTimer = null;
+}
+
 async function refresh() {
   const state = await send('GET_STATE');
   settings = state.settings;
@@ -368,6 +729,7 @@ async function refresh() {
   paintHeader();
   paintProgress(state);
   checkTab().catch(() => {});
+  loadLibrary().catch(() => {});
 }
 
 refresh().catch((err) => banner('err', escapeHtml(err.message)));

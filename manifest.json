@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "LeetHub Sync — LeetCode → GitHub",
-  "version": "1.0.0",
-  "description": "Tracks your LeetCode progress and pushes every accepted submission to a public or private GitHub repo, with a prompt on each submit.",
+  "version": "1.1.1",
+  "description": "Pushes every accepted LeetCode submission to a public or private GitHub repo, and backfills your whole solved history in one go.",
   "minimum_chrome_version": "111",
-  "permissions": ["storage", "notifications"],
+  "permissions": ["storage", "notifications", "alarms"],
   "host_permissions": [
     "https://leetcode.com/*",
     "https://leetcode.cn/*",

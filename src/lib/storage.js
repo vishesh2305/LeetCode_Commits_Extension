@@ -18,7 +18,27 @@ export const DEFAULTS = {
   debug: true,                // verbose logging in the page console
   commitTemplate: 'Add solution for {id}. {title} ({difficulty}) [{lang}]',
   repoIsPrivate: null,        // filled in by "Test connection"
-  githubLogin: ''
+  githubLogin: '',
+  bulkDelayMs: 1000,          // pause between problems during a bulk push
+  bulkSkipPushed: true        // leave already-synced problems out of a bulk run
+};
+
+/** A bulk push that has never been started. */
+export const EMPTY_JOB = {
+  status: 'idle',       // idle | running | paused | done | cancelled | interrupted
+  queue: [],            // slugs still to process, head first
+  total: 0,
+  done: 0,
+  pushed: 0,
+  failed: 0,
+  attempts: 0,          // retries spent on the head of the queue
+  current: null,        // { slug, title } being worked on right now
+  errors: [],           // { slug, title, error }
+  startedAt: null,
+  finishedAt: null,
+  heartbeat: 0,         // last sign of life from the runner
+  openedTabId: null,    // a LeetCode tab we opened ourselves, closed when done
+  message: ''
 };
 
 export async function getSettings() {
@@ -106,4 +126,41 @@ export function summarize(progress) {
     thisWeek,
     pushes: (progress.activity || []).length
   };
+}
+
+
+/* ------------------------------ bulk backfill ------------------------------ */
+
+export async function getJob() {
+  const { job } = await chrome.storage.local.get('job');
+  return { ...EMPTY_JOB, ...(job || {}) };
+}
+
+export async function setJob(patch) {
+  const next = { ...(await getJob()), ...patch };
+  await chrome.storage.local.set({ job: next });
+  return next;
+}
+
+/**
+ * A job is only truly running while the service worker keeps touching it.
+ * Chrome can evict the worker mid-run, so a stale heartbeat means "interrupted",
+ * which the popup offers to resume. The window is generous on purpose: a single
+ * problem can legitimately take a while (retry backoff is up to 30s), and calling
+ * a live run dead would stop it.
+ */
+export function isStale(job, maxAgeMs = 180000) {
+  return job.status === 'running' && Date.now() - (job.heartbeat || 0) > maxAgeMs;
+}
+
+/** Cached list of every solved problem, fetched from LeetCode on demand. */
+export async function getLibrary() {
+  const { library } = await chrome.storage.local.get('library');
+  return { fetchedAt: null, items: [], selection: [], ...(library || {}) };
+}
+
+export async function setLibrary(patch) {
+  const next = { ...(await getLibrary()), ...patch };
+  await chrome.storage.local.set({ library: next });
+  return next;
 }
